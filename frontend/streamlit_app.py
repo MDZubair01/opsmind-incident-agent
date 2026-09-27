@@ -1,46 +1,22 @@
 import streamlit as st
-import requests
-import threading
-import time
 import os
 import sys
 
-# Ensure project root is in Python path to import backend modules
+# Ensure root directory is accessible for importing agent.py
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
-API_URL = "http://127.0.0.1:8000"
-
-# --- Automatic Background Backend Launcher for Streamlit Cloud ---
-@st.cache_resource
-def start_backend_server():
+try:
+    from agent import retain_incident_resolution, triage_incident
+except ImportError:
+    # If the triage function has an alternate name in agent.py
     try:
-        import uvicorn
-        from backend.main import app
+        from agent import retain_incident_resolution, diagnose_incident as triage_incident
+    except ImportError:
+        try:
+            from agent import retain_incident_resolution, run_triage as triage_incident
+        except ImportError:
+            pass
 
-        def run_server():
-            config = uvicorn.Config(app=app, host="127.0.0.1", port=8000, log_level="warning")
-            server = uvicorn.Server(config)
-            server.run()
-
-        thread = threading.Thread(target=run_server, daemon=True)
-        thread.start()
-
-        # Wait up to 5 seconds for the backend to start accepting connections
-        for _ in range(10):
-            try:
-                r = requests.get(f"{API_URL}/docs", timeout=1)
-                if r.status_code == 200:
-                    break
-            except Exception:
-                time.sleep(0.5)
-        return True
-    except Exception as e:
-        st.sidebar.error(f"Backend init error: {e}")
-        return False
-
-start_backend_server()
-
-# --- Streamlit UI ---
 st.set_page_config(page_title="OpsMind | SRE Incident Agent", layout="wide")
 st.title("OpsMind: Autonomous Incident Response Agent")
 st.caption("Powered by Vectorize Hindsight persistent memory and Groq LLM inference")
@@ -62,21 +38,22 @@ with tab1:
         if triage_btn:
             with st.spinner("OpsMind querying Hindsight memory and diagnosing with Groq..."):
                 try:
-                    res = requests.post(f"{API_URL}/triage", json={
-                        "service_name": service,
-                        "error_message": error,
-                        "stack_trace": stack
-                    })
-                    if res.status_code == 200:
-                        data = res.json()
-                        st.success("Triage Analysis Generated!")
-                        st.markdown(data["analysis"])
-                        with st.expander("Inspected Hindsight Recalled Memories"):
-                            st.write(data.get("memories_retrieved", []))
+                    data = triage_incident(
+                        service_name=service,
+                        error_message=error,
+                        stack_trace=stack
+                    )
+                    st.success("Triage Analysis Generated!")
+                    
+                    if isinstance(data, dict):
+                        st.markdown(data.get("analysis", data))
+                        if "memories_retrieved" in data:
+                            with st.expander("Inspected Hindsight Recalled Memories"):
+                                st.write(data.get("memories_retrieved", []))
                     else:
-                        st.error("Error communicating with OpsMind API.")
+                        st.markdown(str(data))
                 except Exception as e:
-                    st.error(f"Failed to connect to backend: {e}")
+                    st.error(f"Execution error: {e}")
 
 with tab2:
     st.subheader("Submit Post-Mortem Fix (Retain in Hindsight)")
@@ -90,16 +67,13 @@ with tab2:
         submit = st.form_submit_button("Teach OpsMind (Hindsight retain)")
         if submit:
             try:
-                res = requests.post(f"{API_URL}/resolve", json={
-                    "service_name": r_service,
-                    "error_message": r_error,
-                    "root_cause": r_cause,
-                    "fix_applied": r_fix,
-                    "runbook_cmd": r_cmd
-                })
-                if res.status_code == 200:
-                    st.success("Resolution retained in Hindsight memory! Next time this alert fires, OpsMind will know how to fix it.")
-                else:
-                    st.error(f"Error from backend: {res.status_code}")
+                retain_incident_resolution(
+                    service_name=r_service,
+                    error_message=r_error,
+                    root_cause=r_cause,
+                    fix_applied=r_fix,
+                    runbook_cmd=r_cmd
+                )
+                st.success("Resolution retained in Hindsight memory! Next time this alert fires, OpsMind will know how to fix it.")
             except Exception as e:
-                st.error(f"Failed to connect to backend: {e}")
+                st.error(f"Resolution error: {e}")
