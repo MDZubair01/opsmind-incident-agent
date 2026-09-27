@@ -2,20 +2,10 @@ import streamlit as st
 import os
 import sys
 
-# Ensure root directory is accessible for importing agent.py
+# Ensure root directory is in Python path to import agent.py directly
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
-try:
-    from agent import retain_incident_resolution, triage_incident
-except ImportError:
-    # If the triage function has an alternate name in agent.py
-    try:
-        from agent import retain_incident_resolution, diagnose_incident as triage_incident
-    except ImportError:
-        try:
-            from agent import retain_incident_resolution, run_triage as triage_incident
-        except ImportError:
-            pass
+from agent import diagnose_incident, retain_incident_resolution
 
 st.set_page_config(page_title="OpsMind | SRE Incident Agent", layout="wide")
 st.title("OpsMind: Autonomous Incident Response Agent")
@@ -38,20 +28,15 @@ with tab1:
         if triage_btn:
             with st.spinner("OpsMind querying Hindsight memory and diagnosing with Groq..."):
                 try:
-                    data = triage_incident(
+                    data = diagnose_incident(
                         service_name=service,
                         error_message=error,
                         stack_trace=stack
                     )
                     st.success("Triage Analysis Generated!")
-                    
-                    if isinstance(data, dict):
-                        st.markdown(data.get("analysis", data))
-                        if "memories_retrieved" in data:
-                            with st.expander("Inspected Hindsight Recalled Memories"):
-                                st.write(data.get("memories_retrieved", []))
-                    else:
-                        st.markdown(str(data))
+                    st.markdown(data.get("analysis", ""))
+                    with st.expander("Inspected Hindsight Recalled Memories"):
+                        st.write(data.get("memories_retrieved", []))
                 except Exception as e:
                     st.error(f"Execution error: {e}")
 
@@ -67,7 +52,7 @@ with tab2:
         submit = st.form_submit_button("Teach OpsMind (Hindsight retain)")
         if submit:
             try:
-                retain_incident_resolution(
+                res = retain_incident_resolution(
                     service_name=r_service,
                     error_message=r_error,
                     root_cause=r_cause,
