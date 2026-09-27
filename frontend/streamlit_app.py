@@ -1,8 +1,46 @@
 import streamlit as st
 import requests
+import threading
+import time
+import os
+import sys
 
-API_URL = "http://localhost:8000"
+# Ensure project root is in Python path to import backend modules
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
+API_URL = "http://127.0.0.1:8000"
+
+# --- Automatic Background Backend Launcher for Streamlit Cloud ---
+@st.cache_resource
+def start_backend_server():
+    try:
+        import uvicorn
+        from backend.main import app
+
+        def run_server():
+            config = uvicorn.Config(app=app, host="127.0.0.1", port=8000, log_level="warning")
+            server = uvicorn.Server(config)
+            server.run()
+
+        thread = threading.Thread(target=run_server, daemon=True)
+        thread.start()
+
+        # Wait up to 5 seconds for the backend to start accepting connections
+        for _ in range(10):
+            try:
+                r = requests.get(f"{API_URL}/docs", timeout=1)
+                if r.status_code == 200:
+                    break
+            except Exception:
+                time.sleep(0.5)
+        return True
+    except Exception as e:
+        st.sidebar.error(f"Backend init error: {e}")
+        return False
+
+start_backend_server()
+
+# --- Streamlit UI ---
 st.set_page_config(page_title="OpsMind | SRE Incident Agent", layout="wide")
 st.title("OpsMind: Autonomous Incident Response Agent")
 st.caption("Powered by Vectorize Hindsight persistent memory and Groq LLM inference")
@@ -61,5 +99,7 @@ with tab2:
                 })
                 if res.status_code == 200:
                     st.success("Resolution retained in Hindsight memory! Next time this alert fires, OpsMind will know how to fix it.")
+                else:
+                    st.error(f"Error from backend: {res.status_code}")
             except Exception as e:
                 st.error(f"Failed to connect to backend: {e}")
