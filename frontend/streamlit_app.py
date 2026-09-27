@@ -2,10 +2,12 @@ import streamlit as st
 import os
 import sys
 
-# Ensure root directory is in Python path to import agent.py directly
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+# Ensure repository root is on sys.path so 'backend.agent' can be imported
+ROOT_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+if ROOT_DIR not in sys.path:
+    sys.path.insert(0, ROOT_DIR)
 
-from agent import diagnose_incident, retain_incident_resolution
+from backend.agent import diagnose_incident, retain_incident_resolution
 
 st.set_page_config(page_title="OpsMind | SRE Incident Agent", layout="wide")
 st.title("OpsMind: Autonomous Incident Response Agent")
